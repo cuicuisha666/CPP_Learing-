@@ -1,13 +1,14 @@
 #include"GeneticAlgorithm.h"//包含头文件
 
 
+
 //输入待求函数
 void Input() {
     cout << "请输入待求函数: ";
     getline(cin, inputString);
+    De_Variable = variable_Number(inputString).size();
 }
 
-//变量x的数量
 set<string> variable_Number(string s){
     std::regex regexPattern("x\\d+");
     std::smatch match;
@@ -19,16 +20,14 @@ set<string> variable_Number(string s){
         variables.insert(match.str());
         searchStart = match.suffix().first;
     }
-
     return  variables;
 }
 
-void value_Fitness(string s){
+string value_Fitness(string s){
     set<string> variables = variable_Number(s);
-
     // 获取变量的个数
     size_t numVariables = variables.size();
-    vector<string> variablesArray(numVariables);
+    vector<string> variablesArray(numVariables); //创建一个大小为变量个数大小的vector<string>类型的变量
 
     // 将变量替换为数组索引的形式，并存入数组
     size_t i = 0;
@@ -37,7 +36,7 @@ void value_Fitness(string s){
         i++;
     }
 
-    string functionExpr = inputString;
+    string functionExpr = s;
 
     // 使用循环遍历 variablesArray，替换变量名为数组索引的形式
     for (i = 0; i < numVariables; i++) {
@@ -48,14 +47,134 @@ void value_Fitness(string s){
             pos = functionExpr.find(findExpr, pos + variablesArray[i].length());
         }
     }
-
-    cout << "转换后的待求函数为: " << functionExpr << endl;
+    return functionExpr;
 }
 
 
 
-//自变量取值范围向量和种群向量定义
-const X_Range Range[De_Variable] = { X_Range(-3.0,12.1) ,X_Range(4.1,5.8) };//自变量（或者基因）x1,x2的取值范围
+// 定义运算符的优先级
+int getPriority(char op) {
+    if (op == '+' || op == '-') {
+        return 1;
+    } else if (op == '*' || op == '/') {
+        return 2;
+    } else if (op == '^') {
+        return 3;
+    }
+    return 0; // 对于括号，优先级最高
+}
+
+// 执行简单的二元运算
+double applyOperator(double a, double b, char op) {
+    if (op == '+') {
+        return a + b;
+    } else if (op == '-') {
+        return a - b;
+    } else if (op == '*') {
+        return a * b;
+    } else if (op == '/') {
+        return a / b;
+    } else if (op == '^') {
+        return pow(a, b);
+    }
+    return 0;
+}
+
+// 将中缀表达式转换为后缀表达式，并处理 x[1] 或者 x[0] 这样的表达式
+std::string infixToPostfix(const std::string& infixExpr, const std::vector<double>& x) {
+    std::stack<char> opStack;
+    std::string postfixExpr;
+
+    std::istringstream iss(infixExpr);
+
+    char c;
+    while (iss >> c) {
+        if (c == ' ') {
+            continue;
+        }
+
+        if (isdigit(c) || c == '.') {
+            postfixExpr += c;
+        } else if (c == 'x') {
+            std::string indexStr;
+            iss >> c; // 读取 '['
+            while (iss >> c) {
+                if (isdigit(c)) {
+                    indexStr += c;
+                } else if (c == ']') {
+                    int index = std::stoi(indexStr);
+                    double val = x[index];
+                    postfixExpr += std::to_string(val);
+                    break;
+                }
+            }
+        } else if (c == '(') {
+            opStack.push(c);
+        } else if (c == ')') {
+            while (!opStack.empty() && opStack.top() != '(') {
+                postfixExpr += ' ';
+                postfixExpr += opStack.top();
+                opStack.pop();
+            }
+            if (!opStack.empty() && opStack.top() == '(') {
+                opStack.pop();
+            }
+        } else {
+            while (!opStack.empty() && getPriority(opStack.top()) >= getPriority(c)) {
+                postfixExpr += ' ';
+                postfixExpr += opStack.top();
+                opStack.pop();
+            }
+            postfixExpr += ' ';
+            opStack.push(c);
+        }
+    }
+
+    while (!opStack.empty()) {
+        postfixExpr += ' ';
+        postfixExpr += opStack.top();
+        opStack.pop();
+    }
+
+    return postfixExpr;
+}
+
+// 计算 postfix 表达式的结果
+double calculatePostfix(const std::string& postfixExpr) {
+    std::stack<double> numStack;
+
+    std::istringstream iss(postfixExpr);
+    std::string token;
+
+    while (iss >> token) {
+        if (isdigit(token[0]) || token[0] == '.') {
+            double num;
+            std::istringstream(token) >> num;
+            numStack.push(num);
+        } else {
+            double num2 = numStack.top();
+            numStack.pop();
+            double num1 = numStack.top();
+            numStack.pop();
+            double result = applyOperator(num1, num2, token[0]);
+            numStack.push(result);
+        }
+    }
+
+    return numStack.top();
+}
+
+
+
+
+
+
+
+//自变量的取值范围
+const vector<X_Range> Range = { X_Range(-3.0,12.1) ,X_Range(4.1,5.8) };
+
+
+
 vector<Individual> nowpopulation;//P(t)种群
 vector<Individual> midpopulation;//中间种群，存放轮盘选择后的优秀个体
 vector<Individual> nextpopulation;//P(t+1)种群
@@ -70,8 +189,9 @@ double X_Range::GetLower()const//获取变量下限
     return Lower;
 }
 //Individual类实现
-Individual::Individual(double* m_Variable)//构造函数
+Individual::Individual(vector<double> m_Variable)//构造函数
 {
+    Variable.resize(De_Variable);
     for (int i = 0; i < De_Variable; i++)//用for循环自变量逐个赋值
     {
         if (m_Variable[i] >= Range[i].GetLower() && m_Variable[i] <= Range[i].GetUpper())//这里要进行自变量取值范围判断
@@ -89,7 +209,7 @@ Individual::Individual(double* m_Variable)//构造函数
     this->ReFitness = 0;
     this->SumFitness = 0;
 }
-double* Individual::GetVariable()//获取基因值
+vector<double> Individual::GetVariable()//获取基因值
 {
     return Variable;
 }
@@ -117,43 +237,57 @@ void Individual::ChaSumFitness(const double m_SumFitness)//修改累加概率
 {
     this->SumFitness = m_SumFitness;
 }
+
+
 //遗传算法的准备工作
 void Initialize()//随机初始化种群，得到第一代种群
 {
 //产生指定范围的随机变量（基因）
-    double X[Po_Size][De_Variable];//为了使程序可以满足多元函数最值的计算，用矩阵保存产生的随机数变量值
+    double X[Po_Size][De_Variable];//Po_Size 种群规模  De_Variable 自变量数量
     for (int j = 0; j < De_Variable; j++)
     {
         default_random_engine e(time(0));//引擎，生成随机序列
-        uniform_real_distribution<double> u(Range[j].GetLower(), Range[j].GetUpper());//分布
+        uniform_real_distribution<double> u(Range[j].GetLower(), Range[j].GetUpper());//自变量分布
         for (int i = 0; i < Po_Size; i++)//先按列存储随机数
         {
             X[i][j] = u(e);//循环结束时，所有随机值就保存在X矩阵中
         }
     }
+
 //生成对象（染色体）并加入到初始种群中
     for (int i = 0; i < Po_Size; i++)
     {
-        double variable[De_Variable];
+        vector<double> var;
+        var.resize(De_Variable);
+
         for (int j = 0; j < De_Variable; j++)
         {
-            variable[j] = X[i][j];//按行保存
+            var[j] = X[i][j];//按行保存
         }
-        Individual Indivi(variable);//生成一个对象（染色体）
+
+        Individual Indivi(var);//生成一个对象（染色体）
         nowpopulation.push_back(Indivi);//加入到种群population中
     }
 }
+
 void CaculaFitness()//计算个体的适应值
 {
-    //f(x1,x2) = 21.5+x1*sin(4pi*x1)+x2*sin(20pi*x2)）为适应度计算函数
-    double fitness = 0;//临时适应值
-    double x[De_Variable];//临时存储自变量（基因）
+    vector<double> x;//临时存储自变量（基因）
+    x.resize(De_Variable);
     for (int i = 0; i < Po_Size; i++)
     {
         for (int j = 0; j < De_Variable; j++)
+        {
             x[j] = nowpopulation.at(i).GetVariable()[j];//这样更直观
-        fitness = 21.5 + x[0] * sin(4 * PI*x[0]) + 2 * sin(20 * PI*x[1]);//适应度计算
+        }
+
+        string s1 = inputString;
+        s1 = value_Fitness(s1);
+        string postfixExpr = infixToPostfix(s1,x);
+        double fitness = calculatePostfix(postfixExpr);
+        //double fitness = x[1]+3*(x[0]+24)+x[0]/3;
         nowpopulation.at(i).ChaFitness(fitness);//修改当前染色体的适应值
+
     }
 }
 void CaculaReFitness()//计算适应值概率
@@ -229,7 +363,9 @@ void crossing()//杂交
             }
             int localx1, localx2;//记录基因交叉点的位置
             int corssx1[length1], corssx2[length2];//作为交换基因的数组
-            double newx1[2], newx2[2];//分别用来保存基因交换后所对应自变量值
+            vector<double> newx1, newx2;//分别用来保存基因交换后所对应自变量值
+            newx1.resize(De_Variable);
+            newx2.resize(De_Variable);
             bool p1 = true, p2 = true;
             //然后对双亲变量进行编码并且进行单点杂交
             for (int j = 0; j < De_Variable; j++)//array1的x1编码之后和array2的x1编码后进行单点杂交，以此类推
@@ -311,7 +447,8 @@ void variating()//变异
         double variation = Scand();//随机产生一个0到1的小数，用于判断是否进行变异
         if (variation <= Va_Probability)//如果variation小于变异系数，则需要进行变异
         {
-            double x[2];
+            vector<double> x;
+            x.resize(De_Variable);
             bool p = true;
             int x1local, x2local;
             x[0] = nextpopulation.at(num).GetVariable()[0];
@@ -356,7 +493,7 @@ void genetic_algorithm()
         variating();//变异
     }
     CaculaFitness();//适应度计算
-    double maxfitness=nowpopulation.at(0).GetFitness();
+    double maxfitness = nowpopulation.at(0).GetFitness();
     int maxid = 0;
     int k;
     for (k = 0; k < Po_Size; k++)
