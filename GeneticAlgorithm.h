@@ -15,9 +15,10 @@
 
 using namespace std;
 
-static string inputString = "21.5+x1*(4*x1)+x2*(20*x2)";//设置一个全局静态变量存放、
+static string inputString = "x2+2*(x1^2+5)+x1/3";//设置一个全局静态变量存放输入的函数
 set<string> variable_Number(string); //求变量数量
-void Input(); //输入待求的函数
+void Input_function(); //输入待求的函数
+void Input_domain();//输入自变量的取值范围
 
 const double PI = 3.141592653589793;//定义一个不可改变的常量值PI
 const int Po_Size = 500;//种群规模

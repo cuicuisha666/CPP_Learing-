@@ -3,11 +3,13 @@
 
 
 //输入待求函数
-void Input() {
+void Input_function() {
     cout << "请输入待求函数: ";
     getline(cin, inputString);
     De_Variable = variable_Number(inputString).size();
 }
+
+
 
 set<string> variable_Number(string s){
     std::regex regexPattern("x\\d+");
@@ -147,7 +149,7 @@ double calculatePostfix(const std::string& postfixExpr) {
     std::string token;
 
     while (iss >> token) {
-        if (isdigit(token[0]) || token[0] == '.') {
+        if (isdigit(token[0]) || token[0] == '.' || (token[0] == '-' && isdigit(token[1]))) {
             double num;
             std::istringstream(token) >> num;
             numStack.push(num);
@@ -166,12 +168,18 @@ double calculatePostfix(const std::string& postfixExpr) {
 
 
 
-
-
-
-
 //自变量的取值范围
-const vector<X_Range> Range = { X_Range(-3.0,12.1) ,X_Range(4.1,5.8) };
+vector<X_Range> Range;
+
+void Input_domain() {
+    Range.clear(); // 清空原有的取值范围
+    for(int i = 0; i < De_Variable; i++) {
+        cout << "请输入第 " << i+1 << " 个自变量的取值范围（先输入下界，然后输入上界）: ";
+        double lower, upper;
+        cin >> lower >> upper;
+        Range.push_back(X_Range(lower, upper));
+    }
+}
 
 
 
@@ -189,26 +197,26 @@ double X_Range::GetLower()const//获取变量下限
     return Lower;
 }
 //Individual类实现
-Individual::Individual(vector<double> m_Variable)//构造函数
-{
+Individual::Individual(vector<double> m_Variable) {
     Variable.resize(De_Variable);
-    for (int i = 0; i < De_Variable; i++)//用for循环自变量逐个赋值
-    {
-        if (m_Variable[i] >= Range[i].GetLower() && m_Variable[i] <= Range[i].GetUpper())//这里要进行自变量取值范围判断
-        {
-            Variable[i] = m_Variable[i];//自变量赋值
-        }
-        else//不满足要求则发出出错警告并返回
-        {
+    std::random_device rd;  // 用来生成真正的随机数
+    std::default_random_engine e(rd());//引擎，生成随机序列
+    for (int i = 0; i < De_Variable; i++) {
+        if (m_Variable[i] < Range[i].GetLower() || m_Variable[i] > Range[i].GetUpper()) {
+            std::uniform_real_distribution<double> u(Range[i].GetLower(), Range[i].GetUpper());//自变量分布
+            Variable[i] = u(e);
+        } else if (m_Variable[i] >= Range[i].GetLower() && m_Variable[i] <= Range[i].GetUpper()){
+            Variable[i] = m_Variable[i];
+        } else {
             cerr << "自变量取值不满足要求" << endl;
-            exit(1);//停止程序，我会以随机函数的方式生成自变量的值(基因值)，这里说明基因值不在规定范围内
+            exit(1);
         }
     }
-    //初始化时默认适应值等值为0
     this->Fitness = 0;
     this->ReFitness = 0;
     this->SumFitness = 0;
 }
+
 vector<double> Individual::GetVariable()//获取基因值
 {
     return Variable;
@@ -242,19 +250,20 @@ void Individual::ChaSumFitness(const double m_SumFitness)//修改累加概率
 //遗传算法的准备工作
 void Initialize()//随机初始化种群，得到第一代种群
 {
-//产生指定范围的随机变量（基因）
+    //产生指定范围的随机变量（基因）
     double X[Po_Size][De_Variable];//Po_Size 种群规模  De_Variable 自变量数量
+    std::random_device rd;  // 用来生成真正的随机数
     for (int j = 0; j < De_Variable; j++)
     {
-        default_random_engine e(time(0));//引擎，生成随机序列
-        uniform_real_distribution<double> u(Range[j].GetLower(), Range[j].GetUpper());//自变量分布
+        std::default_random_engine e(rd());//引擎，生成随机序列
+        std::uniform_real_distribution<double> u(Range[j].GetLower(), Range[j].GetUpper());//自变量分布
         for (int i = 0; i < Po_Size; i++)//先按列存储随机数
         {
             X[i][j] = u(e);//循环结束时，所有随机值就保存在X矩阵中
         }
     }
 
-//生成对象（染色体）并加入到初始种群中
+    //生成对象（染色体）并加入到初始种群中
     for (int i = 0; i < Po_Size; i++)
     {
         vector<double> var;
@@ -285,8 +294,8 @@ void CaculaFitness()//计算个体的适应值
         s1 = value_Fitness(s1);
         string postfixExpr = infixToPostfix(s1,x);
         double fitness = calculatePostfix(postfixExpr);
-        //double fitness = x[1]+3*(x[0]+24)+x[0]/3;
         nowpopulation.at(i).ChaFitness(fitness);//修改当前染色体的适应值
+
 
     }
 }
@@ -455,12 +464,17 @@ void variating()//变异
             x[1] = nextpopulation.at(num).GetVariable()[1];
             bitset<length1> array1((x[0]+ 3.0)* pow(10, 6));//x1编码
             bitset<length2> array2(x[1]*pow(10,6));//x2编码
-            x1local = rand() % length1;//array1该位取反
-            x2local = rand() % length2;//array2该位取反
-            array1.flip(x1local);//改变array1 x1local位的状态
-            array2.flip(x2local);//改变array2 x2local位的状态
-            x[0] = double(array1.to_ullong()) / pow(10, 6) - 3.0;
-            x[1] = double(array2.to_ullong()) / pow(10, 6);
+            // 随机选择一个自变量进行变异
+            int varIndex = rand() % De_Variable;
+            if (varIndex == 0) {
+                x1local = rand() % length1;//array1该位取反
+                array1.flip(x1local);//改变array1 x1local位的状态
+                x[0] = double(array1.to_ullong()) / pow(10, 6) - 3.0;
+            } else if (varIndex == 1) {
+                x2local = rand() % length2;//array2该位取反
+                array2.flip(x2local);//改变array2 x2local位的状态
+                x[1] = double(array2.to_ullong()) / pow(10, 6);
+            }
             //判断是否符合条件
             if (x[0]< Range[0].GetLower() || x[0]>Range[0].GetUpper() || x[1]<Range[1].GetLower() || x[1]>Range[1].GetUpper())
                 p = false;
@@ -480,7 +494,6 @@ void variating()//变异
 }
 void genetic_algorithm()
 {
-
     Initialize();//初始化种群,随机生成第一代个体
     //进化500代
     for (int i = 0; i < Ev_Algebra; i++)
@@ -505,8 +518,23 @@ void genetic_algorithm()
         }
     }
     //进化500代之后输出
-    cout << "x1"<<setw(10)<<"x2" << setw(15)<<"Fitness" << endl;
-    for (int j = 0; j < Po_Size; j++)
-        cout << nowpopulation.at(j).GetVariable()[0] <<setw(10)<< nowpopulation.at(j).GetVariable()[1] << setw(10) <<nowpopulation.at(j).GetFitness() << endl;
-    cout << "x1=" << nowpopulation.at(maxid).GetVariable()[0] << " ，" << "x2=" << nowpopulation.at(maxid).GetVariable()[1] << "时取得最大值：" << maxfitness << endl;
+    for (int j = 0; j < De_Variable; j++)
+    {
+        cout << "x" << j+1 << "\t";
+    }
+    cout << "Fitness" << endl;
+    for (int i = 0; i < Po_Size; i++)
+    {
+        for (int j = 0; j < De_Variable; j++)
+        {
+            cout << nowpopulation.at(i).GetVariable()[j] << "\t";
+        }
+        cout << nowpopulation.at(i).GetFitness() << endl;
+    }
+    cout << "当 ";
+    for (int j = 0; j < De_Variable; j++)
+    {
+        cout << "x" << j+1 << "=" << nowpopulation.at(maxid).GetVariable()[j] << " ，";
+    }
+    cout << "时取得最大值：" << maxfitness << endl;
 }
